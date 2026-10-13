@@ -1,3 +1,9 @@
+---
+name: observability
+always: false
+applies_to: ["**/*log*", "**/*error*", "**/*exception*", "**/*metric*", "**/*trace*", "**/*monitor*", "**/*sentry*", "**/*alert*"]
+---
+
 # Skill: observability
 
 When this breaks in production at 3am, will anyone be able to tell? Review logs,

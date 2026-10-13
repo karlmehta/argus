@@ -1,3 +1,9 @@
+---
+name: concurrency
+always: false
+applies_to: ["**/*async*", "**/*await*", "**/*worker*", "**/*queue*", "**/*task*", "**/tasks.py", "**/*lock*", "**/*thread*", "**/*mutex*", "**/*transaction*", "**/*atomic*", "**/*goroutine*", "**/*channel*"]
+---
+
 # Skill: concurrency
 
 Reason about what happens when two of these run at once. Most concurrency bugs are

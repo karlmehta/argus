@@ -1,3 +1,9 @@
+---
+name: data-protection
+always: false
+applies_to: ["**/*user*", "**/*patient*", "**/*pii*", "**/*export*", "**/*serializer*", "**/*log*", "**/payments/**", "**/*email*", "**/*phone*", "**/*address*", "**/*.sql", "**/migrations/**"]
+---
+
 # Skill: data-protection
 
 Guard personal and cross-tenant data. This overlaps with `security` but is scoped

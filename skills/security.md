@@ -1,3 +1,9 @@
+---
+name: security
+always: false
+applies_to: ["**/auth/**", "**/payments/**", "**/billing/**", "**/*.sql", "**/middleware/**", "**/*secret*", "**/*token*", "**/*password*", "**/*permission*", "**/*tenant*", "**/*crypto*", "**/*oauth*"]
+---
+
 # Skill: security
 
 Find ways this change lets someone do something they shouldn't. Read auth and

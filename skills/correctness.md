@@ -1,3 +1,9 @@
+---
+name: correctness
+always: true
+applies_to: []
+---
+
 # Skill: correctness
 
 Does it work, and does it do what the PR says? Trace real execution, don't

@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "description": "Stable short id; omit for new findings."},
+          "skill": {"type": "string", "description": "Rubric that raised this (e.g. security, correctness)."},
+          "severity": {"type": "string", "enum": ["blocker", "major", "minor", "nit"]},
+          "file": {"type": "string"},
+          "line": {"type": "integer", "description": "Line in the new file (HEAD)."},
+          "title": {"type": "string", "description": "Short headline."},
+          "body": {"type": "string", "description": "<=80 words, concrete, with a fix."},
+          "confidence": {"type": "number", "description": "0.0-1.0; how sure you are given only the provided context."}
+        },
+        "required": ["skill", "severity", "title", "body", "confidence"],
+        "additionalProperties": false
+      }
+    },
+    "resolved_prior_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Ids of prior findings the current code has fixed."
+    },
+    "summary": {"type": "string", "description": "<=120 words."},
+    "memory_suggestions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Optional conventions/accepted-patterns worth recording (a human merges these)."
+    }
+  },
+  "required": ["findings", "summary"],
+  "additionalProperties": false
+}

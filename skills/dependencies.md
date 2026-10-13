@@ -1,3 +1,9 @@
+---
+name: dependencies
+always: false
+applies_to: ["**/requirements*.txt", "**/package.json", "**/go.mod", "**/go.sum", "**/Cargo.toml", "**/pyproject.toml", "**/Gemfile", "**/*.lock", "**/poetry.lock", "**/pnpm-lock.yaml"]
+---
+
 # Skill: dependencies
 
 Review what the PR pulls into the tree. New dependencies are permanent liabilities.

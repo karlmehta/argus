@@ -1,3 +1,9 @@
+---
+name: api-compat
+always: false
+applies_to: ["**/api/**", "**/*.proto", "**/openapi*", "**/schema*", "**/migrations/**", "**/routes/**", "**/urls.py", "**/*serializer*", "**/*controller*", "**/*endpoint*", "**/*.graphql"]
+---
+
 # Skill: api-compat
 
 Catch changes that break existing callers, clients, stored data, or in-flight

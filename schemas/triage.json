@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "trivial": {
+      "type": "boolean",
+      "description": "True if the delta is a no-op for review (formatting, comments, version bumps, generated files)."
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Overall risk of the change. high = security/data/auth/concurrency/public-API surface."
+    },
+    "files_for_deep_review": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Subset of changed files that warrant the stronger reviewer. Empty if none."
+    },
+    "reason": {"type": "string", "description": "<=2 sentences."}
+  },
+  "required": ["trivial", "risk", "files_for_deep_review", "reason"],
+  "additionalProperties": false
+}

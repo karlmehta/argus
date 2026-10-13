@@ -1,0 +1,31 @@
+# Copy to a CONSUMING repo as .github/workflows/argus.yml
+#
+# This thin caller owns the triggers; the reusable workflow owns the pipeline.
+# Pin BOTH the `uses:` ref and `harness-ref` to the same SHA/tag so a review's
+# behavior is reproducible (the "a green check reviewed THIS code" guarantee).
+#
+# One-time setup in the consuming repo / org:
+#   • Add the org/repo secret ARGUS_ANTHROPIC_API_KEY (dedicated Argus workspace
+#     key with a Console spend limit — never a personal key).
+#   • Optionally add .github/argus/config.yml to override defaults, and
+#     .github/argus/memory/{conventions,accepted-patterns}.md for repo memory.
+#   • Remove any other Claude-on-PR workflow (claude-review-dev.yml /
+#     claude-review-main.yml) — Argus is the single PR reviewer.
+
+name: Argus
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  argus:
+    uses: xspan-ai/argus/.github/workflows/argus-review.yml@REPLACE_WITH_SHA
+    with:
+      harness-ref: REPLACE_WITH_SHA
+      harness-repo: xspan-ai/argus
+      config-path: .github/argus/config.yml
+    secrets:
+      ARGUS_ANTHROPIC_API_KEY: ${{ secrets.ARGUS_ANTHROPIC_API_KEY }}
