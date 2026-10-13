@@ -88,6 +88,8 @@ def main() -> int:
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
     event = load_event()
     config = load_config()
+    if config.get("dry_run") or os.environ.get("ARGUS_DRY_RUN") == "1":
+        os.environ["ARGUS_DRY_RUN"] = "1"  # shadow mode: run the pipeline, post nothing
     pr, full = resolve_pr(event, event_name)
     pr_number, head_sha, base_sha = pr["number"], pr["head"]["sha"], pr["base"]["sha"]
 
@@ -216,7 +218,7 @@ def _finish(pr, head_sha, findings, summary, config, st, changed_names, trims, r
     verdict = post.publish(pr, head_sha, findings, summary, config, new_state, cost_line, trims)
     run["verdict"] = verdict
     state.add_daily_spend(today, run["cost_usd"])
-    record_artifact({**run, "result": "reviewed", "spend_pr_usd": new_spend})
+    record_artifact({**run, "result": "reviewed", "spend_pr_usd": new_spend, "findings": findings})
 
 
 # Schemas loaded at import (also written to schemas/ for the workflow artifact).

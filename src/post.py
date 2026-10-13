@@ -3,7 +3,14 @@ verdict + inline comments) and one editable summary comment (table, cost, hidden
 state marker). Verdict policy is unchanged from v1."""
 from __future__ import annotations
 
+import os
+
 from . import gh, state
+
+
+def _dry() -> bool:
+    """Shadow mode — compute everything, post nothing (spec §9 shadow stage)."""
+    return os.environ.get("ARGUS_DRY_RUN") == "1"
 
 SEV_ICON = {"blocker": "🔴", "major": "🟠", "minor": "🟡", "nit": "⚪"}
 SEV_RANK = {"blocker": 0, "major": 1, "minor": 2, "nit": 3}
@@ -70,6 +77,8 @@ def publish(pr: dict, head_sha: str, findings: list[dict], summary: str, config:
     """Submit the review (verdict + inline) and upsert the summary comment. Returns verdict."""
     pr_number = pr["number"]
     verdict = choose_verdict(findings, pr, config)
+    if _dry():
+        return verdict  # shadow: artifact only, nothing posted
 
     review_body = "See the Argus summary comment for the full report."
     try:
@@ -97,6 +106,8 @@ def publish(pr: dict, head_sha: str, findings: list[dict], summary: str, config:
 def note_only(pr_number: int, text: str, new_state: dict) -> None:
     """Post/refresh the summary comment with a note (no review event). Used for
     skip / no-material-change / budget-stop / schema-failure paths."""
+    if _dry():
+        return  # shadow: artifact only
     body = f"## 🛡️ Argus\n\n{text}\n\n{state.marker(new_state)}"
     cid = new_state.get("_comment_id")
     if cid:

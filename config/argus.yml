@@ -4,6 +4,10 @@
 
 version: 2
 
+# Shadow mode (spec §9): run the full pipeline + write argus-run.json, but post
+# nothing (no review, no comment). Use for 3 days in a new repo before going live.
+dry_run: false
+
 # Which review skills are eligible, in priority order. A skill is only LOADED on a
 # given PR when its front-matter `always: true` or an `applies_to` glob matches a
 # changed file (see skills/*.md) — this is the main fixed-prompt saving vs v1.
