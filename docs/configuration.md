@@ -1,5 +1,13 @@
 # Configuration
 
+> **v2 note.** v2 adds keys this page may not list yet: `models` (triage /
+> review_default / review_high_risk), `budget` (per_run_usd / per_pr_usd /
+> per_repo_daily_usd), `debounce_minutes`, `context_lines`, `max_input_tokens`,
+> `min_confidence`, `strict_globs`, `skip_globs`, and `dry_run` (shadow mode). Each
+> skill also carries `applies_to` front-matter so only matching rubrics load. The
+> v1 keys below (`paths.skip` / `paths.strict` / `limits.*`) are still honored. See
+> the commented [`config/argus.yml`](../config/argus.yml) and [`v2.md`](v2.md).
+
 All behavior is driven by [`config/argus.yml`](../config/argus.yml).
 
 ## Keys

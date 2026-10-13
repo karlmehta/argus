@@ -10,9 +10,11 @@
 [![built with Claude](https://img.shields.io/badge/built%20with-Claude-8A2BE2)](https://www.anthropic.com/claude)
 [![stars](https://img.shields.io/github/stars/karlmehta/argus?style=social)](https://github.com/karlmehta/argus/stargazers)
 
-**Argus** is a self-hostable, model-agnostic PR-review agent for GitHub. It reads your diff the way a senior engineer does — across security, data-protection, correctness, performance, tests, and API-compatibility — remembers your codebase's conventions between reviews, and leaves a precise, cited, severity-ranked verdict instead of a rubber stamp.
+**Argus** is a self-hostable, model-agnostic PR reviewer for GitHub. It reads your diff the way a senior engineer does — across security, data-protection, correctness, performance, tests, and API-compatibility — remembers your codebase's conventions between reviews, and leaves a precise, cited, severity-ranked verdict instead of a rubber stamp.
 
 Named for [Argus Panoptes](https://en.wikipedia.org/wiki/Argus_Panoptes), the hundred-eyed watchman who never slept.
+
+> **v2 — token-efficient.** Argus is now a **deterministic pipeline**, not an open-ended agent: scripts gather a minimal context pack, a cheap model triages, and only high-risk files escalate to a stronger model — **1–2 model calls per run, the model never uses tools.** Incremental re-reviews, a cache-stable prompt prefix, path-matched rubrics, and per-run/PR/repo budgets cut cost by ~90% with no loss in blocker/major recall. Design: [`docs/v2.md`](docs/v2.md) · cost telemetry: [`docs/cost.md`](docs/cost.md).
 
 [Quickstart](#-quickstart) · [How it works](#-how-it-works) · [Skills](#-skills) · [Memory](#-memory) · [Governance](docs/governance.md) · [Configuration](docs/configuration.md)
 
@@ -34,75 +36,57 @@ Most "AI PR review" bots summarize the diff and post a few generic nits. Argus i
 
 ## ✨ Quickstart
 
-**1. Add the token.** Argus runs on any Claude-compatible backend. Add one repo/org secret:
+**1. Add a dedicated key.** Give Argus its own Anthropic key — a separate Console workspace with a spend limit, so review spend is tracked and bounded. Add it as a repo (or org) secret:
 
 ```bash
-# easiest for Claude Code users — a long-lived OAuth token:
-claude setup-token
-gh secret set CLAUDE_CODE_OAUTH_TOKEN --org <your-org> --visibility all
-# …or an API key:
-gh secret set ANTHROPIC_API_KEY --repo <owner>/<repo>
+gh secret set ARGUS_ANTHROPIC_API_KEY --repo <owner>/<repo>
 ```
 
-**2. Drop in the workflow** (`.github/workflows/argus.yml`):
+**2. Drop in the caller** (`.github/workflows/argus.yml`) — it owns the triggers; the reusable workflow owns the pipeline. **Pin to a SHA** (the rubrics in force are the rubrics that were reviewed):
 
 ```yaml
 name: Argus review
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, synchronize]
   issue_comment:
-    types: [created]        # lets anyone type "@argus review" to re-run
-permissions:
-  contents: read
-  pull-requests: write
+    types: [created]        # OWNER/MEMBER/COLLABORATOR can type "@argus review"
 jobs:
-  review:
-    uses: karlmehta/argus/.github/workflows/argus-review.yml@v1
-    secrets: inherit
+  argus:
+    uses: karlmehta/argus/.github/workflows/argus-review.yml@<pin-a-sha>
+    with:
+      harness-ref: <pin-the-same-sha>
+      config-path: .github/argus/config.yml
+    secrets:
+      ARGUS_ANTHROPIC_API_KEY: ${{ secrets.ARGUS_ANTHROPIC_API_KEY }}
 ```
 
-**3. Open a PR.** Argus posts a review within a couple of minutes. That's it.
+**3. Open a PR.** Argus posts a review, with a cost line, within a minute or two. That's it. Ready-to-copy caller: [`examples/caller-argus.yml`](examples/caller-argus.yml).
 
-Prefer to vendor it? Copy [`.github/workflows/argus-review.yml`](.github/workflows/argus-review.yml) and the [`skills/`](skills), [`prompts/`](prompts), [`config/`](config), and [`memory/`](memory) folders into your repo and tune [`config/argus.yml`](config/argus.yml).
+**Per-repo config & memory** live in *your* repo at `.github/argus/` — `config.yml` (skills, models, budgets, globs) and `memory/{conventions,accepted-patterns}.md`. Memory is **not** shared across repos. Roll out staged (shadow `dry_run` → canary) per [`docs/v2.md`](docs/v2.md).
 
 ---
 
-## 🔭 How it works
+## 🔭 How it works (v2)
+
+A deterministic pipeline — **the model never uses tools.** Scripts gather context and post results; the model receives one prompt and returns one JSON object. **1–2 model calls per run.**
 
 ```
-        PR opened / synced / "@argus review"
-                       │
-                       ▼
-        ┌──────────────────────────────┐
-        │  Harness (GitHub Action)      │
-        │   • fetch diff + changed files│
-        │   • load config/argus.yml     │
-        │   • load enabled skills/*.md  │
-        │   • load memory/* (conventions,│
-        │     accepted patterns, FPs)   │
-        └──────────────┬───────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  Reviewer (Claude)            │
-        │   for each enabled skill:     │
-        │     apply rubric → findings   │
-        │   dedupe · rank by severity   │
-        │   cross-check vs memory       │
-        │   → structured verdict        │
-        └──────────────┬───────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  Reporter                     │
-        │   • inline comments (file:line)│
-        │   • summary review            │
-        │   • verdict: request-changes  │
-        │     / comment / approve       │
-        │   • propose memory updates    │
-        └──────────────────────────────┘
+  PR event (opened | ready_for_review | synchronize | "@argus")
+      │
+      ▼  debounce        on a push, wait a quiet period; a superseded run makes ZERO model calls
+      ▼  gate            draft / bot / lockfile-only / oversized → short-circuit, no LLM
+      ▼  delta           review only last_reviewed_sha..HEAD; trivial/empty delta → note, no LLM
+      ▼  context pack    diff hunks + ±N HEAD context + referenced-symbol signatures
+      │                  + ONLY path-matched rubrics + repo memory  (cache-stable prefix, 1h cache)
+      ▼  triage  (Haiku, 1 call) → trivial? risk = low|medium|high
+      ▼  review          low/medium → Haiku · high → Sonnet, scoped to the risky files   (1 call)
+      ▼  merge           carry forward unresolved prior findings, drop stale, dedupe, confidence-filter
+      ▼  post            review bound to commit_id (verdict + inline) + one editable summary + cost line
+      ▼  record          argus-run.json: exactly what was sent + what it cost
 ```
 
-The full data-flow and extension points are in [`docs/architecture.md`](docs/architecture.md).
+Budgets (per-run / per-PR / per-repo-daily) are checked **before any model call**. Full design + rollout in [`docs/v2.md`](docs/v2.md); internals in [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
@@ -185,7 +169,7 @@ Argus renders a genuine verdict. Whether `argus[bot]`'s **approval** is allowed 
 
 ## Configuration
 
-Everything is driven by [`config/argus.yml`](config/argus.yml): which skills run, severity gates, path-based rules (`skip:` vendored dirs, `strict:` security-critical dirs), comment budget, and model selection. See [`docs/configuration.md`](docs/configuration.md).
+Everything is driven by [`config/argus.yml`](config/argus.yml) (your repo overrides it at `.github/argus/config.yml`): which skills are eligible, per-stage **models** (triage / default / high-risk), **budgets** (`per_run_usd` / `per_pr_usd` / `per_repo_daily_usd`), `strict_globs` (force the stronger model), `skip_globs`, the severity `gate`, `dry_run` (shadow mode), and `verdict.allow_approve`. Each skill declares `applies_to` globs so only relevant rubrics load per PR. See [`docs/configuration.md`](docs/configuration.md) and [`docs/cost.md`](docs/cost.md).
 
 ---
 
