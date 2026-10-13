@@ -1,4 +1,9 @@
-name: "Argus"
+# ⚠️ DEPRECATED (v1). This composite action runs the old open-ended
+# claude-code-action agent loop (expensive). v2 does NOT use this action — use the
+# reusable workflow `.github/workflows/argus-review.yml` (deterministic pipeline,
+# src/main.py) via a caller (see examples/caller-argus.yml, README Quickstart,
+# docs/v2.md). Kept only for back-compat with existing `uses: karlmehta/argus@<v1-sha>` steps.
+name: "Argus (v1 — deprecated)"
 description: "The AI code reviewer that actually reviews — skills, memory, and an honest verdict."
 author: "karlmehta"
 branding:
