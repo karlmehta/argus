@@ -1,3 +1,9 @@
+---
+name: tests
+always: true
+applies_to: []
+---
+
 # Skill: tests
 
 Judge whether the change is *verified*, not just whether tests exist.

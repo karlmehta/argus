@@ -1,38 +1,35 @@
-name: Argus Review
+name: Argus Review v2
 
-# Reusable + standalone PR-review workflow.
-#
-# Argus reads the diff and the surrounding code, applies each enabled review
-# skill, cross-checks against the repo's memory, and posts ONE consolidated
-# review with severity-ranked, file:line-cited findings.
-#
-# Verdict policy (see docs/governance.md):
-#   • request-changes  — when a `blocker`/`major` finding is confirmed
-#   • comment          — the default: findings surfaced, human sign-off still required
-#   • approve          — OFF by default. Only enabled when a maintainer sets
-#                        `verdict.allow_approve: true` in config/argus.yml AND the
-#                        change is genuinely clean. Argus never approves to merely
-#                        clear a required-review gate; whether a bot approval counts
-#                        toward branch protection is a repo-owner decision.
+# Reusable workflow. A repo enables Argus by adding a thin caller
+# (.github/workflows/argus.yml — see docs/configuration.md) that calls this with
+# its Anthropic key. The model never uses tools; this runs a deterministic 1–2
+# call pipeline (src/main.py): debounce → gate → delta → context pack → triage
+# (Haiku) → review (Haiku|Sonnet) → merge → post. Verdict policy unchanged:
+#   • request-changes — a confirmed blocker/major (per config.gate)
+#   • comment         — default
+#   • approve         — only if verdict.allow_approve AND zero blocker/major
 
 on:
   workflow_call:
     inputs:
       config-path:
-        description: Path to argus.yml
         type: string
-        default: config/argus.yml
-  pull_request:
-    types: [opened, reopened, ready_for_review]
-  issue_comment:
-    types: [created]
-  workflow_dispatch:
+        default: .github/argus/config.yml
+      harness-ref:
+        description: "Ref of the Argus harness repo to run (pin a SHA/tag)."
+        type: string
+        required: true
+      harness-repo:
+        type: string
+        default: xspan-ai/argus
+    secrets:
+      ARGUS_ANTHROPIC_API_KEY:
+        required: true
 
 permissions:
   contents: read
   pull-requests: write
-  issues: read
-  id-token: write
+  issues: write
 
 concurrency:
   group: argus-${{ github.event.pull_request.number || github.event.issue.number }}
@@ -40,60 +37,50 @@ concurrency:
 
 jobs:
   review:
-    # Non-draft same-repo PRs (forks can't read secrets) + explicit "@argus" mentions.
+    # Non-fork PR events, or an "@argus" command from a trusted non-bot author.
     if: >
-      (github.event_name == 'workflow_dispatch') ||
       (github.event_name == 'pull_request' &&
-        github.event.pull_request.draft == false &&
         github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'issue_comment' &&
         github.event.issue.pull_request != null &&
-        contains(github.event.comment.body, '@argus'))
+        startsWith(github.event.comment.body, '@argus') &&
+        github.event.comment.user.type != 'Bot' &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout (full history for conflict + base-diff analysis)
+      - name: Checkout target repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
 
-      - name: Run Argus
-        uses: anthropics/claude-code-action@v1
+      - name: Checkout Argus harness
+        uses: actions/checkout@v4
         with:
-          # Either secret works; CLAUDE_CODE_OAUTH_TOKEN takes precedence if set.
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            You are **Argus**, this repository's automated PR reviewer.
-            Review pull request #${{ github.event.pull_request.number || github.event.issue.number }}.
+          repository: ${{ inputs.harness-repo }}
+          ref: ${{ inputs.harness-ref }}
+          path: .argus
 
-            Follow the harness instructions exactly:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-            1. Read `prompts/system.md` — it defines your persona, rules, and
-               the hard line that you never approve to merely clear a gate.
-            2. Read `config/argus.yml` to learn which skills are enabled, the
-               severity gate, and path rules (skip/strict globs).
-            3. Load every enabled skill from `skills/<name>.md`. Each is a rubric.
-            4. Load repo memory: `memory/conventions.md`,
-               `memory/accepted-patterns.md`, and any relevant `memory/knowledge/*`.
-               Treat accepted-patterns as authoritative — do NOT re-flag them.
-            5. Get the diff: `gh pr diff ${{ github.event.pull_request.number || github.event.issue.number }}`.
-               Read the surrounding code (not just diff hunks) for anything you're
-               unsure about — false positives from missing context are the #1 way
-               reviewers lose trust.
-            6. For each enabled skill, apply its rubric and collect findings.
-               Dedupe across skills. Assign each finding a severity
-               (blocker | major | minor | nit) and a `file:line` citation.
-            7. Follow `prompts/verdict.md` to decide + submit the review:
-               - Post concise inline comments for real issues only.
-               - Post a summary keyed by skill, with a findings table.
-               - If any confirmed blocker/major → `gh pr review <n> --request-changes`.
-               - Else → `gh pr review <n> --comment`.
-               - Only `--approve` if `verdict.allow_approve: true` in config AND you
-                 have zero blocker/major findings AND you would genuinely sign off.
-            8. If you notice a pattern the repo keeps accepting, or a convention
-               worth recording, add a short "📝 Memory suggestion" section — a human
-               will decide whether to merge it into `memory/`.
+      - run: pip install -r .argus/requirements.txt
 
-            Be concrete, cite file:line, and prefer precision over volume.
-          claude_args: >-
-            --model claude-sonnet-4-6 --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*),Bash(gh pr comment:*),Read,Grep,Glob"
+      - name: Argus
+        working-directory: .argus
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ARGUS_ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          ARGUS_CONFIG: ${{ inputs.config-path }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: python -m src.main
+
+      - name: Upload run artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: argus-run-${{ github.run_id }}
+          path: argus-run.json
+          if-no-files-found: ignore

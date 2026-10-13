@@ -1,3 +1,9 @@
+---
+name: performance
+always: false
+applies_to: ["**/*model*", "**/*query*", "**/*repository*", "**/dao/**", "**/migrations/**", "**/*.sql", "**/*cache*", "**/*index*", "**/*loop*", "**/*batch*"]
+---
+
 # Skill: performance
 
 Flag work that won't scale with data or traffic. Focus on hot paths and anything

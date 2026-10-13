@@ -1,0 +1,21 @@
+{
+  "_comment": "USD per million tokens. cache_write is the 1h-TTL write price (2x base in); cache_read is 0.1x base in. Update when Anthropic pricing changes; main.py fails loud if a model used at runtime is missing here.",
+  "claude-haiku-4-5": {
+    "input": 1.00,
+    "output": 5.00,
+    "cache_write": 2.00,
+    "cache_read": 0.10
+  },
+  "claude-sonnet-4-6": {
+    "input": 3.00,
+    "output": 15.00,
+    "cache_write": 6.00,
+    "cache_read": 0.30
+  },
+  "claude-opus-4-8": {
+    "input": 15.00,
+    "output": 75.00,
+    "cache_write": 30.00,
+    "cache_read": 1.50
+  }
+}

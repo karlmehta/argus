@@ -1,9 +1,16 @@
-# Argus configuration. Everything the reviewer's behavior depends on lives here so
-# it's reviewable in a PR like any other change.
+# Argus v2 configuration. Everything the reviewer's behavior depends on lives here,
+# reviewable in a PR like any other change. A repo overrides this by committing its
+# own .github/argus/config.yml.
 
-version: 1
+version: 2
 
-# Which review skills run, in priority order. Comment out any you don't want.
+# Shadow mode (spec §9): run the full pipeline + write argus-run.json, but post
+# nothing (no review, no comment). Use for 3 days in a new repo before going live.
+dry_run: false
+
+# Which review skills are eligible, in priority order. A skill is only LOADED on a
+# given PR when its front-matter `always: true` or an `applies_to` glob matches a
+# changed file (see skills/*.md) — this is the main fixed-prompt saving vs v1.
 skills:
   - security
   - data-protection
@@ -14,51 +21,53 @@ skills:
   - tests
   - observability
   - dependencies
-  # - your-custom-skill        # add skills/your-custom-skill.md and list it here
 
-# Severity gate: the lowest severity that causes a "request changes" verdict.
-# One of: blocker | major | minor. Default: major.
+# Models by stage. Haiku triages and does the default review; Sonnet only on
+# high-risk deltas (or strict_globs). Omit review_high_risk to use Sonnet.
+models:
+  triage: claude-haiku-4-5
+  review_default: claude-haiku-4-5
+  review_high_risk: claude-sonnet-4-6
+
+# Severity gate: lowest severity that forces "request changes". blocker|major|minor.
 gate: major
 
 verdict:
-  # OFF by default. When false, Argus only comments or requests changes — it never
-  # approves. Turning this on lets argus[bot] submit an APPROVE review; whether that
-  # approval counts toward branch protection is a separate repo-owner decision.
-  # READ docs/governance.md before enabling.
+  # OFF by default — Argus never approves unless this is true AND there are no
+  # blocker/major findings. See docs/governance.md.
   allow_approve: false
-  # Never approve PRs opened by these actors (bots/automation).
   never_approve_authors:
     - "dependabot[bot]"
     - "renovate[bot]"
     - "argus[bot]"
 
-# Path rules. Globs are matched against changed file paths.
-paths:
-  # Skip entirely (generated, vendored, lockfiles). No findings raised here.
-  skip:
-    - "**/*.lock"
-    - "**/vendor/**"
-    - "**/node_modules/**"
-    - "**/dist/**"
-    - "**/*.min.js"
-    - "**/__generated__/**"
-    - "**/migrations/**/*.py"     # reviewed by api-compat, but not style-nitted
-  # Raise the bar: in these dirs, drop every finding one severity higher and be
-  # extra thorough on security/data-protection.
-  strict:
-    - "**/auth/**"
-    - "**/billing/**"
-    - "**/payments/**"
-    - "**/*permission*"
-    - "**/*tenant*"
+# Debounce: on a push (synchronize), wait this many minutes then check if a newer
+# commit superseded this run — if so, exit before any model call.
+debounce_minutes: 10
 
-# Keep reviews readable. Max inline comments before Argus rolls the rest into the
-# summary table (prevents 40-comment noise-bombs).
-limits:
-  max_inline_comments: 15
-  # Skip review entirely for PRs larger than this many changed lines and instead
-  # post a note asking for the PR to be split (huge PRs get shallow reviews).
-  max_diff_lines: 4000
+# Pipeline bounds.
+max_changed_lines: 800      # above this: summary-only mode (1 Haiku call, no deep review)
+context_lines: 30           # ± lines of HEAD context around each hunk
+max_symbol_snippets: 20     # referenced-symbol signatures included
+max_input_tokens: 60000     # hard pack ceiling; trims (announced) above this
+max_inline_comments: 10     # extra findings roll into the summary table
+min_confidence: 0.6         # drop findings below this (blockers always kept)
 
-# Model selection. Omit to inherit the action's default.
-model: "claude-sonnet-4-6"   # Sonnet: strong reviewer at ~1/5 Opus cost   # e.g. "claude-opus-4-8" for deep reviews, a faster model for high volume
+review_bots: false          # review PRs opened by bot accounts
+strict_globs:               # force the high-risk (Sonnet) reviewer when any match
+  - "**/auth/**"
+  - "**/billing/**"
+  - "**/payments/**"
+  - "**/*permission*"
+  - "**/*tenant*"
+  - "**/*secret*"
+  - "**/*.sql"
+skip_globs: []              # appended to the built-in defaults (lockfiles, dist, images…)
+
+budget:
+  per_run_usd: 1.00         # abort before the review call if the estimate exceeds this
+  per_pr_usd: 5.00          # cumulative across a PR's runs; then summary-only + ask a human
+  per_repo_daily_usd: 40.00 # checked before any model call
+
+# Back-compat: v1 `paths.skip` / `paths.strict` / `limits.max_inline_comments` are
+# still honored if present.
